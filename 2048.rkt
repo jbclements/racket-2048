@@ -27,20 +27,20 @@
                     [down down-arrow]))
 
 
-(define *side* 4)              ; Side-length of the grid
-(define *time-limit* #f)       ; Use #f for no time limit, or number of seconds
+(define *side* 3)              ; Side-length of the grid
+(define *time-limit* 240)       ; Use #f for no time limit, or number of seconds
 
 (define *amber-alert* 60)      ; Time indicator goes orange when less than this number of seconds remaining
 (define *red-alert* 10)        ; Time indicator goes red when less than this number of seconds remaining
 
-(define *tile-that-wins* 2048) ; You win when you get a tile = this number
+(define *tile-that-wins* 512)  ; You win when you get a tile = this number
 (define *magnification* 2)     ; Scales the game board
 
 (define (set-side! n)
   (set! *side* n))
 
 ;;
-;; Numbers can be displayed with substiture text. Just edit this table...
+;; Numbers can be displayed with substitute text. Just edit this table...
 ;;
 (define *text*
   '((0 "")
