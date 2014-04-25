@@ -141,3 +141,56 @@
   (apply + (map (λ (row) 
                   (combine-total (filter nonzero? row)))
                 grid)))
+
+
+(module+ test
+  (require rackunit)
+  (set-side! 4)
+  
+  (check-equal? (slide-left '(0 0 0 0)) '(0 0 0 0))
+  (check-equal? (slide-left '(1 2 3 4)) '(1 2 3 4))
+  (check-equal? (slide-left '(2 0 4 0)) '(2 4 0 0))
+  (check-equal? (slide-left '(0 0 2 4)) '(2 4 0 0))
+  (check-equal? (slide-left '(2 0 2 0)) '(4 0 0 0))
+  (check-equal? (slide-left '(0 8 8 0)) '(16 0 0 0))
+  (check-equal? (slide-left '(4 4 8 8)) '(8 16 0 0))
+  (check-equal? (slide-right '(4 4 8 8)) '(0 0 8 16))
+  (check-equal? (slide-right '(4 4 4 0)) '(0 0 4 8))
+  
+  (check-equal? (moves-row-left '(0 0 0 0)) '())
+  (check-equal? (moves-row-left '(1 2 3 4)) 
+                '((1 0 0)
+                  (2 1 1)
+                  (3 2 2)
+                  (4 3 3)))
+  
+  (check-equal? (moves-row-left '(2 0 4 0)) '((2 0 0)
+                                              (4 2 1)))
+  
+  (check-equal? (moves-row-right '(2 0 4 0)) '((4 2 3)
+                                               (2 0 2)))
+  
+  (check-equal? (moves-row-left '(0 0 2 4)) '((2 2 0)
+                                              (4 3 1)))
+  
+  (check-equal? (moves-row-left '(2 0 2 0)) '((2 0 0)
+                                              (2 2 0)))
+  
+  (check-equal? (moves-row-left '(2 2 2 0)) '((2 0 0)
+                                              (2 1 0)
+                                              (2 2 1)))
+  
+  (check-equal? (moves-row-right '(2 2 2 0)) '((2 2 3)
+                                               (2 1 3)
+                                               (2 0 2)))
+  
+  (check-equal? (moves-row-left '(2 2 4 4)) '((2 0 0)
+                                              (2 1 0)
+                                              (4 2 1)
+                                              (4 3 1)))
+  
+  (check-equal? (moves-row-right '(2 2 4 4)) '((4 3 3)
+                                               (4 2 3)
+                                               (2 1 2)
+                                               (2 0 2)))
+  )
