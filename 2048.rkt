@@ -32,7 +32,7 @@
 (define *amber-alert* 60)      ; Time indicator goes orange when less than this number of seconds remaining
 (define *red-alert* 10)        ; Time indicator goes red when less than this number of seconds remaining
 
-(define *tile-that-wins* 512)  ; You win when you get a tile = this number
+(define *tile-that-wins* 2048)  ; You win when you get a tile = this number
 (define *magnification* 2)     ; Scales the game board
 
 ;;
@@ -82,7 +82,67 @@
     (1024 white)
     (2048 white)))
 
+;;--------------------------------------------------------------------
+;; We use a sparse representation for transitions in a row.
+;;
+;; Moves take the form '(value initial-position final-position) 
+;;
+(define (moves-row-left row [last #f] [i 0] [j -1])
+  (if (null? row) 
+      null
+      (let ([head (first row)])
+        (cond [(zero? head) (moves-row-left (rest row) last (add1 i) j)]
+              [(equal? last head) 
+               (cons (list head i j)
+                     (moves-row-left (rest row) #f (add1 i) j))]
+              [else (cons (list head i (add1 j))
+                          (moves-row-left (rest row) head (add1 i) (add1 j)))]))))
 
+;; Convert a row into the sparse representaiton without any sliding.
+;;
+;; E.g. (moves-row-none '(0 2 0 4)) -> '((2 1 1) (4 3 3))
+;;
+(define (moves-row-none row)
+  (for/list ([value row]
+             [i (in-naturals)]
+             #:when (nonzero? value))
+    (list value i i)))
+
+
+
+;; Reverse all moves so that:
+;;
+;; '(value initial final) -> '(value (- n initial 1) (- n final 1)
+;;
+(define (reverse-moves moves n)
+  (define (flip i) (- n i 1))
+  (map (λ (m)
+         (match-define (list a b c) m)
+         (list a (flip b) (flip c)))
+       moves))
+
+
+
+(define (transpose-moves moves)
+  (for/list ([m moves])
+    (match-define (list v (list a b) (list c d)) m)
+    (list v (list b a) (list d c))))
+
+(define (moves-row-right row [n *side*])
+  (reverse-moves (moves-row-left (reverse row)) n))
+
+
+
+;;--------------------------------------------------------------------
+;; Lift the sparse representation for transitions
+;; up to two dimensions...
+;;
+;; '(value initial final) -> '(value (x initial) (x final))
+;;
+(define (add-row-coord i rows)
+  (for/list ([r rows])
+    (match-define (list a b c) r)
+    (list a (list i b) (list i c))))
 
 ;; Slide the grid in the specified direction and 
 ;; determine the transitions of the tiles. 
@@ -117,68 +177,7 @@
       (match-define (list v (list i j) _) item)
       (list v (list i j) (list j (- n i 1))))))
 
-;; Chop a list into a list of sub-lists of length n. Used to move from
-;; a flat representation of the grid into a list of rows.
-;; 
-;;
-(define (chop lst [n *side*])
-  (if (<= (length lst) n) 
-      (list lst)
-      (cons (take lst n) (chop (drop lst n) n)))) 
 
-;; The next few functions are used to determine where to place a new
-;; number in the grid...
-;;
-
-;; How many zeros in the current state?
-;;
-(define (count-zeros state)
-  (length (filter zero? state)))
-
-;; What is the absolute index of the nth zero in lst?
-;;
-;; E.g. (index-of-nth-zero '(0 2 0 4) 1 2)) 1) -> 2
-;;
-(define (index-of-nth-zero lst n)
-  (cond [(null? lst) #f]
-        [(zero? (first lst)) 
-         (if (zero? n)
-             0
-             (add1 (index-of-nth-zero (rest lst) (sub1 n))))]
-        [else (add1 (index-of-nth-zero (rest lst) n))]))
-
-;; Place the nth zero in the lst with val.
-;;
-;; E.g. (replace-nth-zero '(0 2 0 4) 1 2)) -> '(0 2 2 4)
-;;
-(define (replace-nth-zero lst n val)
-  (let ([i (index-of-nth-zero lst n)])
-    (append (take lst i) (cons val (drop lst (add1 i))))))
-
-;; There's a 90% chance that a new tile will be a two; 10% a four.
-;;
-(define (new-tile)
-  (if (> (random) 0.9) 4 2))
-
-;; Create a random initial game-board with two non-zeros (2 or 4) 
-;; and the rest 0s.
-;;
-;; E.g. '(0 0 0 0  
-;;        0 2 0 0  
-;;        2 0 0 0  
-;;        0 0 0 0)
-;;
-(define (initial-state [side *side*])
-  (shuffle (append (list (new-tile) (new-tile))
-                   (make-list (- (sqr side) 2) 0))))
-
-;; The game finishes when no matter which way you slide, the board doesn't
-;; change.
-;;
-(define (finished? state [n *side*])
-  (let ([grid (chop state n)])
-    (for/and ([op (list left right up down)])
-      (equal? grid (op grid)))))
 
 ;;--------------------------------------------------------------------
 ;; Graphics
@@ -364,11 +363,9 @@
                   [slide-state (flatten (op grid))])
              (if (equal? slide-state st)
                  w                       ; sliding had no effect
-                 (let* ([replace (random (count-zeros slide-state))]
-                        [index (index-of-nth-zero slide-state replace)]
-                        [value (new-tile)]
-                        [new-state (replace-nth-zero slide-state replace value)]
-                        [horizontal? (member a-key (list "left" "right"))])
+                 (match-let* ([(list new-state index value)
+                               (add-random-tile slide-state)]
+                              [horizontal? (member a-key (list "left" "right"))])
                    (make-world new-state
                                (+ score (score-increment 
                                          (if horizontal? grid (transpose grid))))
@@ -379,7 +376,9 @@
                                (append frames
                                        (animate-moving-tiles st moves-op)
                                        (animate-appearing-tile slide-state value index))
-                               start-time))))]
+                               start-time))
+                 
+                 ))]
           [(key=? a-key " ")             ; rotate the board
            (make-world ((compose flatten transpose reverse) (chop st))
                        score wt
@@ -490,6 +489,54 @@
   
   (set-side! 4) 
 
+  
+  
+  (check-equal? (moves-row-left '(0 0 0 0)) '())
+  (check-equal? (moves-row-left '(1 2 3 4)) 
+                '((1 0 0)
+                  (2 1 1)
+                  (3 2 2)
+                  (4 3 3)))
+  
+  (check-equal? (moves-row-left '(2 0 4 0)) '((2 0 0)
+                                              (4 2 1)))
+  
+  (check-equal? (moves-row-right '(2 0 4 0)) '((4 2 3)
+                                               (2 0 2)))
+  
+  (check-equal? (moves-row-left '(0 0 2 4)) '((2 2 0)
+                                              (4 3 1)))
+  
+  (check-equal? (moves-row-left '(2 0 2 0)) '((2 0 0)
+                                              (2 2 0)))
+  
+  (check-equal? (moves-row-left '(2 2 2 0)) '((2 0 0)
+                                              (2 1 0)
+                                              (2 2 1)))
+  
+  (check-equal? (moves-row-right '(2 2 2 0)) '((2 2 3)
+                                               (2 1 3)
+                                               (2 0 2)))
+  
+  (check-equal? (moves-row-left '(2 2 4 4)) '((2 0 0)
+                                              (2 1 0)
+                                              (4 2 1)
+                                              (4 3 1)))
+  
+  (check-equal? (moves-row-right '(2 2 4 4)) '((4 3 3)
+                                               (4 2 3)
+                                               (2 1 2)
+                                               (2 0 2)))
+  
+  
+  
+  (check-equal? (add-row-coord 7 '((2 0 0)
+                                   (2 1 0)
+                                   (4 2 1)))
+                '((2 (7 0) (7 0))
+                  (2 (7 1) (7 0))
+                  (4 (7 2) (7 1))))
+  
   (check-equal? (moves-grid-left '(( 0 8 8 0)
                                    (16 0 0 0)
                                    ( 2 2 4 4)
@@ -551,28 +598,8 @@
                   (2  (3 3) (3 3))
                   (4  (2 3) (2 3))))
   
-  (check-equal? (chop '(1 2 3 4 5 6 7 8) 4)
-                '((1 2 3 4) (5 6 7 8)))
+
   
-  (check-equal? (length (initial-state 5)) 25)
-  
-  (let* ([initial (initial-state)]
-         [initial-sum (apply + initial)]
-         [largest-3 (take (sort initial >) 3)])
-    (check-equal? (length initial) 16)
-    (check-true (or (= initial-sum 4)
-                    (= initial-sum 6)
-                    (= initial-sum 8)))
-    (check-true (or (equal? largest-3  '(2 2 0))
-                    (equal? largest-3  '(4 2 0))
-                    (equal? largest-3  '(4 4 0)))))
-  
-  (check-equal? (count-zeros '(1 0 1 0 0 0 1)) 4)
-  (check-equal? (count-zeros '(1 1)) 0)
-  (check-equal? (replace-nth-zero '(0 0 0 1 2 0) 2 5)
-                '(0 0 5 1 2 0))
-  
-  (check-true (finished? '(1 2 3 4) 2))
-  (check-false (finished? '(2 2 3 4) 2)))
+)
 
 (start)
